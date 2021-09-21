@@ -5,29 +5,66 @@ $AllApps = Get-ItemProperty "HKLM:\Software\Wow6432Node\Microsoft\Windows\Curren
 $TeamViewer = $AllApps | Where-Object {$_.DisplayName -Like "TeamViewer*"}
 
 # Defines the previous versions of teamviewer to remove. For example, if you define version 15, only versions older than this will be uninstalled.
-$oldTwVersion = 15 
+$oldTwVersion = 15
 
-# Uninstall versions lower than $oldTwVersion.
-if ($TeamViewer.DisplayVersion -lt $oldTwVersion -And $null -ne $TeamViewer) {
-    # Identify and stop TeamViewer id process
-    $twid = (Get-Process TeamViewer).id
-    Stop-Process -Id $twid
-    Wait-Process -Id $twid
-
-    # Uninstall TeamViewer
-    Start-Process -FilePath ($TeamViewer.UninstallString) -ArgumentList "/S" -WindowStyle Hidden
+function stopTeamviewer {
+    param (
+        $process
+    )
+    # Stop TeamViewer process and service.
+    Stop-Process -ID $process.Id -Force
+    Wait-Process -ID $process.Id
 }
 
+ function uninstallTeamviewer
+ {
+    # Uninstall TeamViewer
+    Start-Process -FilePath ($TeamViewer.UninstallString) -ArgumentList "/S" -Wait -WindowStyle Hidden
+    $TeamViewer = $AllApps | Where-Object {$_.DisplayName -Like "TeamViewer*"}
+}
 
-# Path to the TeamViewer installer.
-$FILEPATH = '\\Server_ip_Address\Folder\Host\'
+function installTeamviewer
+{
+    # Path to the TeamViewer installer.
+    $FILEPATH = '\\10.212.10.91\Packages\Host\'
 
-# API key for the TeamViewer installer (Admin teamviewer Cloud deployment). The next is a sample api key.
-$API= '12345678-DkdieCmADfEickasdfe'
+    # API key for the TeamViewer installer (Admin teamviewer Cloud deployment).
+    $API= '13734827-IAocT7WQjKMdMcFqRafv'
 
-# Config id for the TeamViewer installer (id for deployment package). The next is a sample CONFIGID.
-$CONFIG = '8kieurer'
+    # Config id for the TeamViewer installer (id for deployment package).
+    $CONFIG = '6xqqnca'
 
-# Install the teamviewer msi associated with the API key, config id, and filepath. The settingsfile.tvopt is generated from the host client settings (export setting from any teamviewer client).
- msiexec.exe /i $FILEPATH"TeamViewer_Host.msi" /qb CUSTOMCONFIGID=$CONFIG APITOKEN=$API SETTINGSFILE=$FILEPATH"settingsfile.tvopt" ASSIGNMENTOPTIONS="--reassign"
+    # Install the teamviewer msi associated with the API key, config id, and filepath.
+    msiexec.exe /i $FILEPATH"TeamViewer_Host.msi" /qb CUSTOMCONFIGID=$CONFIG APITOKEN=$API SETTINGSFILE=$FILEPATH"settingsfile.tvopt" ASSIGNMENTOPTIONS="--reassign"    
+}
 
+# Uninstall versions lower than $oldTwVersion.
+if ($TeamViewer.VersionMajor -lt $oldTwVersion -And $null -ne $TeamViewer)
+{
+    # Get all processes in running state
+    $processArray = Get-Process
+    foreach ($process in $processArray)
+    {
+        if ($process.ProcessName -Like "TeamViewer*")
+        {
+            # Get admin rights to kill process.
+            if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+            {
+                Start-Process PowerShell -WindowStyle Hidden -Verb RunAs "-NoProfile -ExecutionPolicy Bypass -Command `"cd '$pwd'; & '$PSCommandPath';`"";
+                exit;
+            }
+            # Stop TeamViewer process and service.
+            stopTeamViewer $process
+        }
+    }
+    # Uninstall old version and install the latest TeamViewer version.
+    uninstallTeamviewer
+    Start-Sleep -Seconds 15
+    installTeamviewer
+}
+
+# If there is no teamviewer version installed, install the latest version.
+if ($null -eq $TeamViewer)
+{
+    installTeamviewer
+}
